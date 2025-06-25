@@ -16,14 +16,22 @@
 
     body {
       font-family: 'Poppins', sans-serif;
-      background: radial-gradient(circle at 2px 2px, #ffffff 1px, transparent 1px), 
-                  linear-gradient(135deg, #0a0a23 0%, #1a1a3d 50%, #2a2a5e 100%);
-      background-size: 20px 20px, cover;
+      background: linear-gradient(135deg, #0a0a23 0%, #1a1a3d 50%, #2a2a5e 100%);
+      position: relative;
       color: #f5f5f5;
       overflow: hidden;
       user-select: none;
       -webkit-user-select: none;
       -ms-user-select: none;
+    }
+
+    canvas#starfield {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
     }
 
     .game-container {
@@ -108,7 +116,7 @@
       animation: wavy 2s infinite linear;
     }
 
-    .start-screen, .game-over-screen {
+    .start-screen, .game-over-screen, .level-up-screen {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -124,20 +132,20 @@
       max-width: 400px;
     }
 
-    .start-screen h1 {
+    .start-screen h1, .level-up-screen h1 {
       font-size: clamp(2rem, 8vw, 2.5rem);
       color: #ff4b4f;
       margin-bottom: 15px;
       text-shadow: 0 0 10px rgba(255, 75, 75, 0.7);
     }
 
-    .start-screen p {
+    .start-screen p, .level-up-screen p {
       font-size: clamp(0.9rem, 3vw, 1rem);
       color: #ccc;
       margin-bottom: 20px;
     }
 
-    .start-button, .restart-button {
+    .start-button, .restart-button, .continue-button {
       padding: clamp(10px, 3vw, 12px) clamp(20px, 5vw, 30px);
       font-size: clamp(1rem, 4vw, 1.2rem);
       font-weight: 600;
@@ -149,7 +157,7 @@
       transition: transform 0.3s, box-shadow 0.3s;
     }
 
-    .start-button:hover, .restart-button:hover {
+    .start-button:hover, .restart-button:hover, .continue-button:hover {
       transform: scale(1.1);
       box-shadow: 0 5px 15px rgba(255, 75, 75, 0.4);
     }
@@ -166,7 +174,19 @@
       margin-bottom: 20px;
     }
 
- Straits    .particle {
+    .combo-multiplier {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: clamp(1rem, 4vw, 1.2rem);
+      color: #ffd700;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+      animation: fadeIn 0.5s ease-in-out;
+      display: none;
+    }
+
+    .particle {
       position: absolute;
       width: 8px;
       height: 8px;
@@ -230,12 +250,11 @@
       .emoji, .powerup {
         font-size: 1.3rem;
       }
-
-
     }
   </style>
 </head>
 <body>
+  <canvas id="starfield"></canvas>
   <div class="game-container">
     <div class="game-header">
       <div class="scoreboard">
@@ -247,13 +266,13 @@
       <div class="controls">
         <button class="pause-button" id="pauseButton">Pause</button>
         <button class="sound-button" id="soundButton">🔊</button>
-        <span class=" timer">Time: <span id="timer">120</span>s</span>
+        <span class="timer">Time: <span id="timer">300</span>s</span>
       </div>
     </div>
     <div class="game-area" id="gameArea"></div>
     <div class="start-screen" id="startScreen">
       <h1>Emoji Blaster 🌌</h1>
-      <p>Tap the falling emojis to score points and collect power-ups for bonuses!<br>Keep your combo streak to multiply your score!</p>
+      <p>Tap the falling emojis to score points and collect power-ups for bonuses!<br>Build combos for higher scores and unlock new levels!</p>
       <p>High Score: <span id="highScore">0</span></p>
       <button class="start-button" id="startButton">Start Game</button>
     </div>
@@ -262,15 +281,23 @@
       <p>Your Score: <span id="finalScore">0</span><br>Level Reached: <span id="finalLevel">1</span><br>High Score: <span id="finalHighScore">0</span></p>
       <button class="restart-button" id="restartButton">Play Again</button>
     </div>
+    <div class="level-up-screen" id="levelUpScreen" style="display: none;">
+      <h1>Level Up!</h1>
+      <p>Level <span id="newLevel">2</span> Unlocked!<br>Get ready for faster emojis!</p>
+      <button class="continue-button" id="continueButton">Continue</button>
+    </div>
+    <div class="combo-multiplier" id="comboMultiplier"></div>
   </div>
 
   <script>
-    const EMOJIS = ["💛", "🌕", "🧀", "⭐", "🐥", "🍌", "🌝", "🌟", "🚀"];
+    const EMOJIS = ["💛", "🌕", "🧀", "⭐", "🐥", "🍌", "🌝", "🌟", "🚀", "🪐", "☄️"];
     const POWERUPS = [
       { emoji: "🛡️", effect: "extraLife" },
-      { emoji: "⚡", effect: "slowTime" },
+      { emoji: "� SlowTime", effect: "slowTime" },
       { emoji: "💥", effect: "clearScreen" },
-      { emoji: "💰", effect: "bonusPoints" }
+      { emoji: "💰", effect: "bonusPoints" },
+      { emoji: "🌠", effect: "scoreBoost" },
+      { emoji: "🕒", effect: "extraTime" }
     ];
     const gameArea = document.getElementById("gameArea");
     const scoreEl = document.getElementById("score");
@@ -280,18 +307,22 @@
     const timerEl = document.getElementById("timer");
     const startScreen = document.getElementById("startScreen");
     const gameOverScreen = document.getElementById("gameOverScreen");
+    const levelUpScreen = document.getElementById("levelUpScreen");
     const startButton = document.getElementById("startButton");
     const restartButton = document.getElementById("restartButton");
+    const continueButton = document.getElementById("continueButton");
     const pauseButton = document.getElementById("pauseButton");
     const soundButton = document.getElementById("soundButton");
     const highScoreEl = document.getElementById("highScore");
     const finalHighScoreEl = document.getElementById("finalHighScore");
+    const newLevelEl = document.getElementById("newLevel");
+    const comboMultiplierEl = document.getElementById("comboMultiplier");
 
     let score = 0;
     let combo = 0;
     let lives = 3;
     let level = 1;
-    let timeLeft = 120;
+    let timeLeft = 300;
     let gameOver = false;
     let gameStarted = false;
     let isPaused = false;
@@ -300,23 +331,65 @@
     let soundEnabled = true;
     let highScore = localStorage.getItem("highScore") ? parseInt(localStorage.getItem("highScore")) : 0;
     let bonusMultiplier = 1;
+    let spawnInterval;
 
     const sounds = {
       click: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_5b4b73a875.mp3'),
       powerup: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_4b7b7b7b7b.mp3'),
       gameover: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_adadadadad.mp3'),
-      lifeLost: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_1a1a1a1a1a.mp3')
+      lifeLost: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_1a1a1a1a1a.mp3'),
+      levelUp: new Audio('https://cdn.pixabay.com/audio/2022/03/10/audio_2b2b2b2b2b.mp3')
     };
 
+    // Starfield background
+    const canvas = document.getElementById("starfield");
+    const ctx = canvas.getContext("2d");
+    let stars = [];
+
+    function initStarfield() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      stars = [];
+      for (let i = 0; i < 200; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 1.5 + 0.5,
+          alpha: Math.random() * 0.5 + 0.5
+        });
+      }
+    }
+
+    function drawStarfield() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      stars.forEach(star => {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+        ctx.fill();
+        star.alpha += (Math.random() - 0.5) * 0.05;
+        if (star.alpha < 0.3) star.alpha = 0.3;
+        if (star.alpha > 1) star.alpha = 1;
+      });
+      requestAnimationFrame(drawStarfield);
+    }
+
+    window.addEventListener("resize", () => {
+      initStarfield();
+    });
+
+    initStarfield();
+    drawStarfield();
+
     function createParticle(x, y) {
-      const particleCount = 6;
+      const particleCount = 8;
       for (let i = 0; i < particleCount; i++) {
         const particle = document.createElement("div");
         particle.classList.add("particle");
         particle.style.left = `${x}px`;
         particle.style.top = `${y}px`;
-        const dx = (Math.random() - 0.5) * 60;
-        const dy = (Math.random() - 0.5) * 60;
+        const dx = (Math.random() - 0.5) * 80;
+        const dy = (Math.random() - 0.5) * 80;
         particle.style.setProperty('--dx', `${dx}px`);
         particle.style.setProperty('--dy', `${dy}px`);
         gameArea.appendChild(particle);
@@ -327,8 +400,8 @@
     function spawnEmoji() {
       if (gameOver || !gameStarted || isPaused) return;
 
-      const isPowerup = Math.random() < 0.15;
-      const isWavy = !isPowerup && Math.random() < 0.3;
+      const isPowerup = Math.random() < 0.2;
+      const isWavy = !isPowerup && Math.random() < 0.4;
       const element = document.createElement("div");
       element.classList.add(isPowerup ? "powerup" : "emoji");
       if (isWavy) element.classList.add("wavy");
@@ -357,7 +430,7 @@
           element.style.top = `${top + emojiSpeed}px`;
           if (isWavy) {
             waveOffset += waveSpeed;
-            element.style.left = `${parseFloat(element.style.left) + Math.sin(waveOffset) * 2}px`;
+            element.style.left = `${parseFloat(element.style.left) + Math.sin(waveOffset) * 3}px`;
           }
         } else {
           clearInterval(fallInterval);
@@ -377,7 +450,7 @@
             gameArea.removeChild(element);
           }
         }
-      }, 30);
+      }, 20);
 
       const handleInteraction = (e) => {
         e.preventDefault();
@@ -389,9 +462,15 @@
           if (soundEnabled) sounds.click.play().catch(() => {});
           combo++;
           comboEl.textContent = combo;
-          const points = 10 * level * (Math.floor(combo / 5) + 1) * bonusMultiplier;
+          const multiplier = Math.floor(combo / 5) + 1;
+          const points = 10 * level * multiplier * bonusMultiplier;
           score += points;
           scoreEl.textContent = score;
+          if (combo >= 5) {
+            comboMultiplierEl.textContent = `${multiplier}x Multiplier!`;
+            comboMultiplierEl.style.display = "block";
+            setTimeout(() => comboMultiplierEl.style.display = "none", 1000);
+          }
           if (score > highScore) {
             highScore = score;
             localStorage.setItem("highScore", highScore);
@@ -419,8 +498,8 @@
           livesEl.textContent = lives;
           break;
         case "slowTime":
-          emojiSpeed = Math.max(1.5, emojiSpeed - 0.5);
-          setTimeout(() => emojiSpeed += 0.5, 7000);
+          emojiSpeed = Math.max(1.5, emojiSpeed - 0.7);
+          setTimeout(() => emojiSpeed += 0.7, 10000);
           break;
         case "clearScreen":
           document.querySelectorAll(".emoji").forEach(el => {
@@ -437,7 +516,21 @@
           break;
         case "bonusPoints":
           bonusMultiplier = 2;
-          setTimeout(() => bonusMultiplier = 1, 5000);
+          setTimeout(() => bonusMultiplier = 1, 7000);
+          break;
+        case "scoreBoost":
+          score += 100 * level * bonusMultiplier;
+          scoreEl.textContent = score;
+          if (score > highScore) {
+            highScore = score;
+            localStorage.setItem("highScore", highScore);
+            highScoreEl.textContent = highScore;
+            finalHighScoreEl.textContent = highScore;
+          }
+          break;
+        case "extraTime":
+          timeLeft += 15;
+          timerEl.textContent = timeLeft;
           break;
       }
     }
@@ -452,11 +545,16 @@
         timerEl.textContent = timeLeft;
         if (timeLeft <= 0) {
           endGame();
-        } else if (timeLeft % 30 === 0) {
+        } else if (timeLeft % 60 === 0) {
           level++;
+          isPaused = true;
+          clearInterval(spawnInterval);
           levelEl.textContent = level;
-          spawnIntervalTime = Math.max(400, spawnIntervalTime - 50);
-          emojiSpeed += 0.3;
+          newLevelEl.textContent = level;
+          levelUpScreen.style.display = "block";
+          if (soundEnabled) sounds.levelUp.play().catch(() => {});
+          spawnIntervalTime = Math.max(300, spawnIntervalTime - 50);
+          emojiSpeed += 0.4;
         }
       }, 1000);
     }
@@ -465,6 +563,7 @@
       gameOver = true;
       gameStarted = false;
       isPaused = false;
+      clearInterval(spawnInterval);
       pauseButton.textContent = "Pause";
       if (soundEnabled) sounds.gameover.play().catch(() => {});
       gameOverScreen.style.display = "block";
@@ -478,7 +577,7 @@
       combo = 0;
       lives = 3;
       level = 1;
-      timeLeft = 120;
+      timeLeft = 300;
       gameOver = false;
       isPaused = false;
       spawnIntervalTime = 1000;
@@ -493,7 +592,9 @@
       finalHighScoreEl.textContent = highScore;
       gameArea.innerHTML = "";
       gameOverScreen.style.display = "none";
+      levelUpScreen.style.display = "none";
       pauseButton.textContent = "Pause";
+      comboMultiplierEl.style.display = "none";
     }
 
     function startGame() {
@@ -501,16 +602,15 @@
       gameStarted = true;
       startScreen.style.display = "none";
       startTimer();
-      const emojiInterval = setInterval(() => {
+      spawnInterval = setInterval(() => {
         if (!gameOver && gameStarted && !isPaused) {
           spawnEmoji();
-        } else {
-          clearInterval(emojiInterval);
         }
       }, spawnIntervalTime);
     }
 
     function togglePause() {
+      if (!gameStarted || gameOver) return;
       isPaused = !isPaused;
       pauseButton.textContent = isPaused ? "Resume" : "Pause";
     }
@@ -525,10 +625,23 @@
       startGame();
     };
 
+    const handleContinue = (e) => {
+      e.preventDefault();
+      isPaused = false;
+      levelUpScreen.style.display = "none";
+      spawnInterval = setInterval(() => {
+        if (!gameOver && gameStarted && !isPaused) {
+          spawnEmoji();
+        }
+      }, spawnIntervalTime);
+    };
+
     startButton.addEventListener("click", handleStart);
     startButton.addEventListener("touchstart", handleStart);
     restartButton.addEventListener("click", handleStart);
     restartButton.addEventListener("touchstart", handleStart);
+    continueButton.addEventListener("click", handleContinue);
+    continueButton.addEventListener("touchstart", handleContinue);
     pauseButton.addEventListener("click", togglePause);
     pauseButton.addEventListener("touchstart", togglePause);
     soundButton.addEventListener("click", toggleSound);
